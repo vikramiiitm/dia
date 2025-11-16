@@ -39,19 +39,36 @@ print(f"Using device: {device}")
 
 # Load Nari model and config
 print("Loading Nari model...")
-try:
-    dtype_map = {
-        "cpu": "float32",
-        "mps": "float32",  # Apple M series – better with float32
-        "cuda": "float16",  # NVIDIA – better with float16
-    }
 
-    dtype = dtype_map.get(device.type, "float16")
-    print(f"Using device: {device}, attempting to load model with {dtype}")
-    model = Dia.from_pretrained("nari-labs/Dia-1.6B-0626", compute_dtype=dtype, device=device)
+print("Loading Nari model...")
+
+try:
+    compute_dtype = "bfloat16" if torch.cuda.is_available() else "float32"
+
+    print(f"Using device: {device} (GTX 1650 low VRAM mode enabled)")
+
+    model = Dia.from_pretrained(
+        "nari-labs/Dia-1.6B-0626",
+        compute_dtype="float16",  # FP16 ONLY for the big model
+        device=device,            # This puts ONLY transformer on GPU
+    )
+
+    # --- CRITICAL LOW-VRAM FIX ---
+    # Move DAC (audio decoder) to CPU
+    if hasattr(model, "codec"):
+        print("Moving DAC codec to CPU (GTX 1650 optimization)")
+        model.codec = model.codec.to("cpu")
+        model.dac_device = torch.device("cpu")
+
+    # Optional: free fragmentation memory
+    torch.cuda.empty_cache()
+
+
 except Exception as e:
-    print(f"Error loading Nari model: {e}")
+    print("Error loading Nari model:", e)
     raise
+
+
 
 
 def set_seed(seed: int):
